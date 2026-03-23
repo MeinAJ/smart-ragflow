@@ -220,13 +220,14 @@ class TextChunker:
         return result
 
 
-def chunk_document(document: Document, chunker: TextChunker = None) -> List[DocumentChunk]:
+def chunk_document(document: Document, chunker: TextChunker = None, file_url: str = None) -> List[DocumentChunk]:
     """
     对文档进行分块。
 
     Args:
         document: 解析后的文档
         chunker: 可选的分块器实例（用于自定义配置）
+        file_url: 文件 URL（可选，用于保存到 chunk 中）
 
     Returns:
         List[DocumentChunk]: 分块列表
@@ -250,6 +251,7 @@ def chunk_document(document: Document, chunker: TextChunker = None) -> List[Docu
             content = text_chunk.strip()
             chunk = DocumentChunk(
                 doc_id=document.id,
+                doc_url=file_url or document.file_path,  # 优先使用传入的 file_url
                 title=section.title or document.title,
                 content=content,
                 chunk_index=chunk_index,
@@ -271,6 +273,7 @@ def chunk_document(document: Document, chunker: TextChunker = None) -> List[Docu
             content = text_chunk.strip()
             chunk = DocumentChunk(
                 doc_id=document.id,
+                doc_url=file_url or document.file_path,  # 优先使用传入的 file_url
                 title=document.title,
                 content=content,
                 chunk_index=chunk_index,

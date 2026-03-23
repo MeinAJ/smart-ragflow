@@ -75,7 +75,7 @@ class LLMClient:
 
         Args:
             question: 用户问题
-            context_docs: 上下文文档
+            context_docs: 上下文文档（包含 content, title, doc_url 等字段）
             system_prompt: 系统提示词
 
         Returns:
@@ -83,21 +83,46 @@ class LLMClient:
         """
         if system_prompt is None:
             system_prompt = """你是一个智能助手，基于提供的参考资料回答用户问题。
-请严格根据参考资料内容回答，如果参考资料不足以回答问题，请明确说明。
-回答要简洁、准确、有条理。"""
+
+**重要规则：**
+1. 请严格根据参考资料内容回答，如果参考资料不足以回答问题，请明确说明。
+2. 回答要简洁、准确、有条理。
+3. **必须在回答中标注数据来源**：当你引用某个文档的内容时，请在引用处使用 Markdown 链接格式标注来源，格式为 `[引用N](文档URL地址)`，其中 N 是文档编号（从1开始）。
+4. 如果答案来自多个文档，请在相应段落分别标注来源，格式为 `[引用1][引用2]`。
+5. 文档标题和 URL 信息已在参考资料中提供，请确保使用正确的引用编号。
+
+**标注示例：**
+- 单个来源：Java 内存模型定义了线程和主内存之间的抽象关系（[引用1](http://localhost:9000/rag-files/java-memory.pdf)）。
+- 多个来源：垃圾回收器的选择对性能有重要影响（[引用1](http://localhost:9000/rag-files/jvm-perf.pdf)[引用3](http://localhost:9000/rag-files/g1-gc.pdf)），而 G1 垃圾回收器适用于大内存场景（[引用2](http://localhost:9000/rag-files/g1-details.pdf)）。
+
+**注意：** 引用编号必须与参考资料中的 `[文档 N]` 编号对应。"""
         
-        # 构建上下文
-        context_text = "\n\n".join([
-            f"[文档 {i+1}]\n{doc.get('content', '')}"
-            for i, doc in enumerate(context_docs)
-        ])
+        # 构建上下文，包含文档元数据（标题、URL）
+        context_parts = []
+        for i, doc in enumerate(context_docs):
+            title = doc.get('title', '') or doc.get("metadata", {}).get('title', '') or f'文档 {i+1}'
+            doc_url = doc.get('doc_url', '') or doc.get("metadata", {}).get('doc_url', '')
+            content = doc.get('content', '')
+            
+            doc_header = f"[文档 {i+1}]"
+            if title:
+                doc_header += f" 标题: {title}"
+            if doc_url:
+                doc_header += f"\nURL: {doc_url}"
+            
+            context_parts.append(f"{doc_header}\n{content}")
+        
+        context_text = "\n\n---\n\n".join(context_parts)
         
         user_prompt = f"""参考资料：
+
 {context_text}
+
+---
 
 用户问题：{question}
 
-请根据参考资料回答问题："""
+请根据以上参考资料回答问题。记得在引用文档内容时使用 Markdown 链接格式标注来源，格式为 `[引用N](文档URL地址)`，其中 N 是文档编号（从1开始）。例如：`（[引用1](URL)）` 或 `（[引用1](URL)[引用2](URL)）`。前端会渲染成可点击的链接，鼠标悬停时会显示完整文档标题。"""
         
         messages = [
             {"role": "system", "content": system_prompt},

@@ -223,7 +223,7 @@ class DocumentParseService:
         logger.info(f"Document parsed: {document.title}, size: {document.file_size} bytes, doc_id: {document.id}")
 
         # 4. 分块
-        chunks = chunk_document(document)
+        chunks = chunk_document(document, file_url=file_url)
         if not chunks:
             logger.warning("No chunks created")
             parse_result.chunks = []

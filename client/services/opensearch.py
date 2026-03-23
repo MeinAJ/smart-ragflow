@@ -7,31 +7,20 @@ OpenSearch 服务客户端模块。
 import logging
 from typing import List, Dict, Any
 from opensearchpy._async.client import AsyncOpenSearch
-from pydantic_settings import BaseSettings
-from pydantic import Field
+
+from common.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-class OpenSearchSettings(BaseSettings):
-    """OpenSearch 服务配置。"""
-    OPENSEARCH_HOST: str = Field(default="localhost", validation_alias="OPENSEARCH_HOST")
-    OPENSEARCH_PORT: int = Field(default=9200, validation_alias="OPENSEARCH_PORT")
-    OPENSEARCH_INDEX: str = Field(default="rag_docs", validation_alias="OPENSEARCH_INDEX")
-    OPENSEARCH_USER: str = Field(default="", validation_alias="OPENSEARCH_USER")
-    OPENSEARCH_PASSWORD: str = Field(default="", validation_alias="OPENSEARCH_PASSWORD")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
-
+# 为了兼容原有代码，添加 host 属性
+class _SettingsWrapper:
     @property
     def host(self) -> str:
-        return f"{self.OPENSEARCH_HOST}:{self.OPENSEARCH_PORT}"
+        return f"{settings.OPENSEARCH_HOST}:{settings.OPENSEARCH_PORT}"
 
 
-settings = OpenSearchSettings()
+_settings_wrapper = _SettingsWrapper()
 
 
 class OpenSearchClient:
@@ -49,7 +38,7 @@ class OpenSearchClient:
             hosts: OpenSearch 地址
             index: 索引名称
         """
-        self.hosts = hosts or settings.host
+        self.hosts = hosts or _settings_wrapper.host
         self.index = index or settings.OPENSEARCH_INDEX
         self._client: AsyncOpenSearch = None
 
@@ -73,46 +62,54 @@ class OpenSearchClient:
             query_text: str,
             query_vector: List[float],
             size: int = 10,
+            min_score: float = None,
             vector_field: str = "embedding",
             title_field: str = "title",
             text_field: str = "content"
     ) -> List[Dict[str, Any]]:
         """
-        执行混合检索（BM25 + 向量相似度）。
+        执行混合检索（BM25 + 向量相似度），返回归一化分数的结果。
 
         Args:
             query_text: 查询文本（用于 BM25）
             query_vector: 查询向量（用于 KNN）
             size: 返回结果数量
+            min_score: 最小分数阈值（0-1范围，为None则使用配置值）
             vector_field: 向量字段名
+            title_field: 标题字段名
             text_field: 文本字段名
 
         Returns:
-            List[Dict]: 文档列表，包含文本、元数据、分数
+            List[Dict]: 文档列表，包含文本、元数据、归一化分数(0-1)
         """
+        # 使用配置中的 min_score 如果未指定
+        if min_score is None:
+            min_score = settings.SEARCH_MIN_SCORE
+
         client = await self._get_client()
 
         # 构建混合查询：bool 组合 match 和 knn
+        # 使用 function_score 和 boost_mode 来控制分数计算
         search_body = {
             "size": size,
             "query": {
                 "bool": {
                     "should": [
-                        # BM25 文本匹配
+                        # BM25 文本匹配（带权重）
                         {
                             "match": {
                                 text_field: {
                                     "query": query_text,
-                                    "boost": 1.0
+                                    "boost": settings.SEARCH_TEXT_BOOST
                                 }
                             }
                         },
-                        # BM25 文本匹配
+                        # 标题匹配（更高权重）
                         {
                             "match": {
                                 title_field: {
                                     "query": query_text,
-                                    "boost": 1.0
+                                    "boost": settings.SEARCH_TITLE_BOOST
                                 }
                             }
                         },
@@ -121,7 +118,6 @@ class OpenSearchClient:
                             "knn": {
                                 vector_field: {
                                     "vector": query_vector,
-                                    "boost": 1.0,
                                     "k": size
                                 }
                             }
@@ -132,26 +128,42 @@ class OpenSearchClient:
         }
 
         try:
-            logger.info(f"Hybrid search: query='{query_text[:50]}...', size={size}")
+            logger.info(f"Hybrid search: query='{query_text[:50]}...', size={size}, min_score={min_score}")
             response = await client.search(
                 index=self.index,
                 body=search_body
             )
 
             hits = response.get("hits", {}).get("hits", [])
-            docs = []
+            if not hits:
+                return []
 
+            # 获取最高分数用于归一化
+            max_score = max(hit.get("_score", 0.0) for hit in hits)
+            if max_score <= 0:
+                max_score = 1.0
+
+            docs = []
             for hit in hits:
+                raw_score = hit.get("_score", 0.0)
+                # 归一化分数到 0-1 范围
+                normalized_score = raw_score / max_score if max_score > 0 else 0.0
+
+                # 过滤低于 min_score 的结果
+                if normalized_score < min_score:
+                    continue
+
                 doc = {
                     "id": hit.get("_id"),
                     "content": hit.get("_source", {}).get(text_field, ""),
                     "metadata": {k: v for k, v in hit.get("_source", {}).items() if
-                                 k != text_field and k != vector_field},
-                    "score": hit.get("_score", 0.0),
+                                 k != text_field},
+                    "score": round(normalized_score, 4),  # 归一化分数 0-1
+                    "raw_score": round(raw_score, 4),  # 原始分数（用于调试）
                 }
                 docs.append(doc)
 
-            logger.info(f"Retrieved {len(docs)} documents")
+            logger.info(f"Retrieved {len(docs)} documents (after filtering by min_score={min_score})")
             return docs
 
         except Exception as e:

@@ -31,7 +31,7 @@ async def vectorize_node(state: GraphState) -> Dict[str, Any]:
         if not question:
             return {"error": "Empty question"}
 
-        logger.info(f"Vectorize node: {question[:50]}...")
+        logger.info(f"Vectorize node: {question}...")
 
         # 调用 embedding 服务
         vector = await embedding_client.embed(question)

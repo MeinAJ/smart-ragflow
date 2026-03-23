@@ -2,31 +2,17 @@
 Embedding 服务客户端模块。
 
 封装 BGE-M3 HTTP 接口调用，实现文本向量化功能。
+返回的向量已经过 L2 归一化。
 """
 
 import logging
-import os
 from typing import List
 import httpx
-from pydantic_settings import BaseSettings
-from pydantic import Field
+
+from common.config import settings
+from common.clients.embedding_client import normalize_vector
 
 logger = logging.getLogger(__name__)
-
-
-class EmbeddingSettings(BaseSettings):
-    """Embedding 服务配置。"""
-    EMBEDDING_URL: str = Field(default="http://localhost:8080/embed", validation_alias="EMBEDDING_URL")
-    EMBEDDING_MODEL: str = Field(default="BGE-M3", validation_alias="EMBEDDING_MODEL")
-    REQUEST_TIMEOUT: float = Field(default=30.0, validation_alias="EMBEDDING_REQUEST_TIMEOUT")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
-
-
-settings = EmbeddingSettings()
 
 
 class EmbeddingClient:
@@ -46,7 +32,7 @@ class EmbeddingClient:
         """
         self.base_url = base_url or settings.EMBEDDING_URL
         self.model = model or settings.EMBEDDING_MODEL
-        self.timeout = timeout or settings.REQUEST_TIMEOUT
+        self.timeout = timeout or settings.EMBEDDING_TIMEOUT
         self._client: httpx.AsyncClient = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -57,13 +43,13 @@ class EmbeddingClient:
 
     async def embed(self, text: str) -> List[float]:
         """
-        将文本转换为向量。
+        将文本转换为归一化向量。
 
         Args:
             text: 输入文本
 
         Returns:
-            List[float]: 1024维向量
+            List[float]: 归一化后的向量（L2 范数为 1）
 
         Raises:
             Exception: 调用失败时抛出
@@ -83,6 +69,9 @@ class EmbeddingClient:
 
             result = response.json()
             vector = result.get("embedding") or result.get("vector") or result
+
+            # L2 归一化
+            vector = normalize_vector(vector)
 
             logger.info(f"Embedding completed, vector dim: {len(vector)}")
             return vector

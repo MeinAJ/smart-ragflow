@@ -91,6 +91,7 @@ class DocumentChunk:
     Attributes:
         id: 分块唯一标识
         doc_id: 所属文档 ID
+        doc_url: 文档地址
         title: 所属章节标题
         content: 分块内容
         chunk_index: 分块序号
@@ -101,6 +102,7 @@ class DocumentChunk:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     doc_id: str = ""
+    doc_url: str = ""
     title: str = ""
     content: str = ""
     chunk_index: int = 0
@@ -109,51 +111,25 @@ class DocumentChunk:
     embedding: Optional[List[float]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def _normalize_vector(self, vector: List[float]) -> List[float]:
-        """
-        L2 归一化向量。
-
-        Args:
-            vector: 输入向量
-
-        Returns:
-            List[float]: 单位向量（L2 范数为 1）
-        """
-        if not vector:
-            return vector
-
-        # 计算 L2 范数
-        norm = sum(x ** 2 for x in vector) ** 0.5
-
-        if norm == 0:
-            return vector
-
-        # 归一化
-        return [x / norm for x in vector]
-
     def to_opensearch_doc(self) -> Dict[str, Any]:
         """
         转换为 OpenSearch 文档格式。
-
-        注意：embedding 字段会被自动 L2 归一化，以便与 OpenSearch cosine similarity 配合。
+        
+        注意：embedding 字段应该已经过 L2 归一化（由 EmbeddingClient 处理）。
 
         Returns:
             Dict: OpenSearch 文档字典
         """
-        # 对 embedding 进行 L2 归一化
-        normalized_embedding = None
-        if self.embedding:
-            normalized_embedding = self._normalize_vector(self.embedding)
-
         return {
             "chunk_id": self.id,
             "doc_id": self.doc_id,
+            "doc_url": self.doc_url,
             "title": self.title,
             "content": self.content,
             "chunk_index": self.chunk_index,
             "token_count": self.token_count,
             "page_number": self.page_number,
-            "embedding": normalized_embedding or [],
+            "embedding": self.embedding or [],
             "metadata": self.metadata,
         }
 
