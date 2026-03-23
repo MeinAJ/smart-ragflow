@@ -1,0 +1,31 @@
+[project]
+name = "smart-ragflow"
+version = "0.1.0"
+description = "智能问答系统框架"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "langchain",
+    "langgraph",
+    "pydantic",
+    "pydantic-settings",
+    "opensearch-py",
+    "aiohttp",
+    "redis",
+    "minio",
+    "python-dotenv",
+    "httpx",
+    "numpy",
+    "tiktoken",
+]
+
+[project.scripts]
+parser = "parser.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["client", "parser"]
