@@ -1,0 +1,19 @@
+# Parser Worker 依赖
+# 注意：这些依赖已在项目根目录的 pyproject.toml 中包含
+# 这里列出是为了文档和 IDE 识别
+
+# 数据库
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+
+# 配置和工具
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+
+# MinIO
+minio>=7.2.0
+
+# 文档解析
+# 注意：具体的解析库根据文件类型安装
+# PyPDF2, python-docx, openpyxl 等

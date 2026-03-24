@@ -18,14 +18,21 @@ dependencies = [
     "httpx",
     "numpy",
     "tiktoken",
+    "sqlalchemy>=2.0.0",
+    "pymysql>=1.1.0",
+    "python-multipart",
+    "pdfplumber",
+    "python-docx",
+    "openpyxl",
+    "python-pptx",
 ]
 
 [project.scripts]
-parser = "parser.cli:main"
+parser = "backend_parser.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["client", "parser", "common"]
+packages = ["backend_QA", "backend_parser", "backend_common", "backend_admin", "frontend_QA", "frontend_admin"]
