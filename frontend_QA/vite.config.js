@@ -13,6 +13,14 @@ export default defineConfig({
       '/files': {
         target: 'http://localhost:8000',
         changeOrigin: true
+      },
+      '/history': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/auth': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
     }
   }

@@ -38,8 +38,11 @@ from backend_common.database import (
 # 数据模型
 from backend_common.models import (
     Base,
+    User,
     Document,
     ParseTask,
+    ChatHistory,
+    UserSession,
 )
 
 # 客户端
@@ -77,8 +80,11 @@ __all__ = [
     
     # 模型
     "Base",
+    "User",
     "Document",
     "ParseTask",
+    "ChatHistory",
+    "UserSession",
     
     # 客户端
     "embedding_client",

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from backend_QA.api import chat, download
+from backend_QA.api import chat, download, history, auth
 
 # 加载 .env 文件
 env_path = Path(__file__).parent.parent / ".env"
@@ -47,8 +47,10 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(download.router)
+app.include_router(history.router)
 
 
 @app.get("/")

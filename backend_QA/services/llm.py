@@ -52,7 +52,8 @@ class LLMClient:
         self,
         question: str,
         context_docs: List[Dict[str, Any]],
-        system_prompt: str = None
+        system_prompt: str = None,
+        history_messages: List[Dict[str, str]] = None
     ) -> List[Dict[str, str]]:
         """
         构建 LLM 消息列表。
@@ -61,6 +62,7 @@ class LLMClient:
             question: 用户问题
             context_docs: 上下文文档（包含 content, title, doc_url 等字段）
             system_prompt: 系统提示词
+            history_messages: 历史对话消息列表
 
         Returns:
             List[Dict]: 消息列表
@@ -108,10 +110,15 @@ class LLMClient:
 
 请根据以上参考资料回答问题。记得在引用文档内容时使用 Markdown 链接格式标注来源，格式为 `[引用N](文档URL地址)`，这样用户可以直接点击链接访问原始文档。"""
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
+        # 构建消息列表：系统提示 + 历史对话 + 当前问题
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # 添加历史对话
+        if history_messages:
+            messages.extend(history_messages)
+        
+        # 添加当前问题
+        messages.append({"role": "user", "content": user_prompt})
         
         return messages
 
@@ -120,7 +127,8 @@ class LLMClient:
         question: str,
         context_docs: List[Dict[str, Any]],
         system_prompt: str = None,
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        history_messages: List[Dict[str, str]] = None
     ) -> AsyncIterator[str]:
         """
         流式生成答案。
@@ -130,12 +138,13 @@ class LLMClient:
             context_docs: 上下文文档
             system_prompt: 系统提示词
             temperature: 采样温度
+            history_messages: 历史对话消息列表
 
         Yields:
             str: 生成的文本片段
         """
         client = await self._get_client()
-        messages = self._build_messages(question, context_docs, system_prompt)
+        messages = self._build_messages(question, context_docs, system_prompt, history_messages)
         
         request_body = {
             "model": self.model,
@@ -191,7 +200,8 @@ class LLMClient:
         question: str,
         context_docs: List[Dict[str, Any]],
         system_prompt: str = None,
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        history_messages: List[Dict[str, str]] = None
     ) -> str:
         """
         非流式生成答案。
@@ -201,12 +211,13 @@ class LLMClient:
             context_docs: 上下文文档
             system_prompt: 系统提示词
             temperature: 采样温度
+            history_messages: 历史对话消息列表
 
         Returns:
             str: 生成的完整答案
         """
         client = await self._get_client()
-        messages = self._build_messages(question, context_docs, system_prompt)
+        messages = self._build_messages(question, context_docs, system_prompt, history_messages)
         
         request_body = {
             "model": self.model,

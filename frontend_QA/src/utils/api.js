@@ -3,7 +3,10 @@
  * 处理 /v1/chat/completions 流式接口
  */
 
-const API_BASE = '' // 使用 Vite 代理
+import { getAuthHeaders, getToken } from './auth.js'
+
+// API 基础地址
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 /**
  * 获取友好的 HTTP 错误信息
@@ -32,33 +35,47 @@ function getFriendlyHttpError(status) {
  * @param {function} onDone - 完成回调
  * @param {function} onError - 错误回调
  * @param {function} onDocs - 接收检索文档元数据的回调 (docs) => {}
+ * @param {string} sessionId - 会话ID，用于关联历史对话
  */
-export async function streamChatCompletion(message, onChunk, onDone, onError, onDocs) {
+export async function streamChatCompletion(message, onChunk, onDone, onError, onDocs, sessionId = null) {
   try {
+    const requestBody = {
+      messages: [
+        { role: 'user', content: message }
+      ],
+      stream: true
+    }
+    
+    if (sessionId) {
+      requestBody.session_id = sessionId
+    }
+    
     const response = await fetch(`${API_BASE}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
-      body: JSON.stringify({
-        messages: [
-          { role: 'user', content: message }
-        ],
-        stream: true
-      })
+      body: JSON.stringify(requestBody)
     })
 
+    if (response.status === 401) {
+      // Token 过期，跳转到登录页
+      onError('登录已过期，请重新登录')
+      setTimeout(() => {
+        window.location.href = '/login'
+      }, 1500)
+      return
+    }
+
     if (!response.ok) {
-      // 尝试读取后端返回的错误信息
       let errorMessage = getFriendlyHttpError(response.status)
       try {
         const errorData = await response.json()
         if (errorData && (errorData.message || errorData.error || errorData.detail)) {
           errorMessage = errorData.message || errorData.error || errorData.detail
         }
-      } catch (e) {
-        // 无法解析 JSON，使用默认友好提示
-      }
+      } catch (e) {}
       throw new Error(errorMessage)
     }
 
@@ -74,40 +91,33 @@ export async function streamChatCompletion(message, onChunk, onDone, onError, on
         break
       }
 
-      // 解码数据
       buffer += decoder.decode(value, { stream: true })
       
-      // 处理 SSE 行（可能包含多个事件）
       const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 保留未完成的行
+      buffer = lines.pop() || ''
       
       let currentEvent = null
       
       for (const line of lines) {
         const trimmedLine = line.trim()
         if (!trimmedLine) {
-          // 空行表示事件结束
           currentEvent = null
           continue
         }
         
-        // 解析事件类型
         if (trimmedLine.startsWith('event: ')) {
           currentEvent = trimmedLine.slice(7)
           continue
         }
         
-        // 解析数据
         if (trimmedLine.startsWith('data: ')) {
           const data = trimmedLine.slice(6)
           
-          // 检查结束标记
           if (data === '[DONE]') {
             onDone && onDone()
             return
           }
           
-          // 处理特殊事件
           if (currentEvent === 'context_docs') {
             try {
               const json = JSON.parse(data)
@@ -120,7 +130,6 @@ export async function streamChatCompletion(message, onChunk, onDone, onError, on
             continue
           }
           
-          // 处理错误事件
           if (currentEvent === 'error') {
             try {
               const json = JSON.parse(data)
@@ -132,21 +141,17 @@ export async function streamChatCompletion(message, onChunk, onDone, onError, on
             return
           }
           
-          // 处理标准 OpenAI SSE 消息
           try {
             const json = JSON.parse(data)
             const content = json.choices?.[0]?.delta?.content
             if (content) {
               onChunk && onChunk(content)
             }
-          } catch (e) {
-            // 忽略解析错误
-          }
+          } catch (e) {}
         }
       }
     }
     
-    // 处理剩余缓冲区
     if (buffer.trim()) {
       const lines = buffer.split('\n')
       for (const line of lines) {
@@ -162,27 +167,192 @@ export async function streamChatCompletion(message, onChunk, onDone, onError, on
               if (content) {
                 onChunk && onChunk(content)
               }
-            } catch (e) {
-              // 忽略
-            }
+            } catch (e) {}
           }
         }
       }
     }
   } catch (error) {
     console.error('Stream error:', error)
-    // 提供更友好的网络错误提示
     let friendlyMessage = error.message || '请求失败'
     
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      friendlyMessage = '网络连接失败，请检查网络或稍后重试'
-    } else if (error.name === 'AbortError') {
-      friendlyMessage = '请求已取消'
-    } else if (!friendlyMessage.includes('请') && !friendlyMessage.includes('请')) {
-      // 如果错误信息不包含友好提示，添加通用提示
+      friendlyMessage = '无法连接到后端服务，请确认服务已启动'
+    } else if (!friendlyMessage.includes('请') && !friendlyMessage.includes('登录')) {
       friendlyMessage = '服务异常，请稍后再试'
     }
     
     onError && onError(friendlyMessage)
+  }
+}
+
+/**
+ * 健康检查 - 测试后端服务是否可用
+ * @returns {Promise<{ok: boolean, message: string}>}
+ */
+export async function healthCheck() {
+  try {
+    const response = await fetch(`${API_BASE}/health`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      return { ok: true, message: `服务正常: ${data.status || 'ok'}` }
+    } else {
+      return { ok: false, message: `服务异常: HTTP ${response.status}` }
+    }
+  } catch (error) {
+    return { 
+      ok: false, 
+      message: `连接失败: ${error.message}`
+    }
+  }
+}
+
+/**
+ * 获取会话列表
+ * @returns {Promise<Array<{session_id: string, message_count: number, last_active: string}>>}
+ */
+export async function getSessionList(limit = 50) {
+  try {
+    const response = await fetch(`${API_BASE}/history/sessions?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    
+    if (response.ok) {
+      return await response.json()
+    } else if (response.status === 401) {
+      window.location.href = '/login'
+      return []
+    } else {
+      console.error('获取会话列表失败:', response.status)
+      return []
+    }
+  } catch (error) {
+    console.error('获取会话列表错误:', error)
+    return []
+  }
+}
+
+/**
+ * 获取指定会话的消息历史
+ * @param {string} sessionId - 会话ID
+ * @param {number} limit - 获取消息数量
+ * @returns {Promise<Array<{id: number, role: string, content: string, created_at: string}>>}
+ */
+export async function getSessionMessages(sessionId, limit = 20) {
+  try {
+    const response = await fetch(`${API_BASE}/history/sessions/${sessionId}/messages?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      return data.messages || []
+    } else if (response.status === 401) {
+      window.location.href = '/login'
+      return []
+    } else {
+      console.error('获取会话消息失败:', response.status)
+      return []
+    }
+  } catch (error) {
+    console.error('获取会话消息错误:', error)
+    return []
+  }
+}
+
+/**
+ * 删除会话
+ * @param {string} sessionId - 会话ID
+ * @returns {Promise<boolean>}
+ */
+export async function deleteSession(sessionId) {
+  try {
+    const response = await fetch(`${API_BASE}/history/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    
+    if (response.status === 401) {
+      window.location.href = '/login'
+      return false
+    }
+    
+    return response.ok
+  } catch (error) {
+    console.error('删除会话错误:', error)
+    return false
+  }
+}
+
+/**
+ * 更新会话名称
+ * @param {string} sessionId - 会话ID
+ * @param {string} sessionName - 新的会话名称
+ * @returns {Promise<boolean>}
+ */
+export async function updateSessionName(sessionId, sessionName) {
+  try {
+    const response = await fetch(`${API_BASE}/history/sessions/${sessionId}/name`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ session_name: sessionName })
+    })
+    
+    if (response.status === 401) {
+      window.location.href = '/login'
+      return false
+    }
+    
+    return response.ok
+  } catch (error) {
+    console.error('更新会话名称错误:', error)
+    return false
+  }
+}
+
+/**
+ * 置顶/取消置顶会话
+ * @param {string} sessionId - 会话ID
+ * @param {boolean} isPinned - 是否置顶
+ * @returns {Promise<boolean>}
+ */
+export async function pinSession(sessionId, isPinned) {
+  try {
+    const response = await fetch(`${API_BASE}/history/sessions/${sessionId}/pin`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ is_pinned: isPinned })
+    })
+    
+    if (response.status === 401) {
+      window.location.href = '/login'
+      return false
+    }
+    
+    return response.ok
+  } catch (error) {
+    console.error('置顶会话错误:', error)
+    return false
   }
 }

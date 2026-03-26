@@ -92,6 +92,7 @@ class DocumentChunk:
         id: 分块唯一标识
         doc_id: 所属文档 ID
         doc_url: 文档地址
+        file_name: 原始文件名（包含扩展名）
         title: 所属章节标题
         content: 分块内容
         chunk_index: 分块序号
@@ -103,6 +104,7 @@ class DocumentChunk:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     doc_id: str = ""
     doc_url: str = ""
+    file_name: str = ""
     title: str = ""
     content: str = ""
     chunk_index: int = 0
@@ -124,6 +126,7 @@ class DocumentChunk:
             "chunk_id": self.id,
             "doc_id": self.doc_id,
             "doc_url": self.doc_url,
+            "file_name": self.file_name,
             "title": self.title,
             "content": self.content,
             "chunk_index": self.chunk_index,

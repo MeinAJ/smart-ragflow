@@ -73,11 +73,18 @@ renderer.link = function(href, title, text) {
   if (citeMatch) {
     const docIndex = parseInt(citeMatch[1]) - 1
     const doc = props.contextDocs[docIndex]
+    
+    // 调试日志
+    console.log('[ChatMessage] Rendering cite link:', { docIndex, doc })
+    
     const docTitle = doc ? (doc.title || doc.metadata?.title || `文档 ${citeMatch[1]}`) : `文档 ${citeMatch[1]}`
-    // 获取原始文件名（用于识别文件类型）
-    const fileName = doc ? (doc.metadata?.file_name || doc.title || '') : ''
-    // 获取 doc_id 用于后端下载
+    // 获取原始文件名（用于识别文件类型）- 优先使用 file_name 字段
+    const fileName = doc ? (doc.file_name || doc.metadata?.file_name || doc.title || '') : ''
+    // 获取 doc_id 用于后端下载 - 优先使用 doc_id 字段
     const docId = doc ? (doc.doc_id || doc.metadata?.doc_id || '') : ''
+    
+    console.log('[ChatMessage] Cite link data:', { docTitle, fileName, docId })
+    
     // 添加 data-preview 属性标识这是一个可预览的链接
     return `<a href="${href}" class="cite-link" data-preview="true" data-doc-title="${docTitle}" data-file-name="${fileName}" data-doc-id="${docId}" title="点击预览：${docTitle}">[引用${citeMatch[1]}]</a>`
   }
@@ -88,10 +95,15 @@ renderer.link = function(href, title, text) {
 // 使用 ref 存储渲染内容，配合 watch 实现更细粒度的控制
 const renderedContent = ref('')
 
-// 实时监听 content 变化并更新渲染
+// 实时监听 content 和 contextDocs 变化并更新渲染
 watch(
-  () => props.content,
-  (newContent) => {
+  [() => props.content, () => props.contextDocs],
+  ([newContent, newContextDocs]) => {
+    console.log('[ChatMessage] Content or contextDocs changed:', { 
+      contentLength: newContent?.length, 
+      docsCount: newContextDocs?.length 
+    })
+    
     if (!newContent) {
       renderedContent.value = ''
       return
@@ -108,41 +120,51 @@ watch(
   { immediate: true, flush: 'post' }
 )
 
-// 绑定引用链接点击事件
-const bindCiteLinkEvents = () => {
-  if (!contentRef.value) return
-  
-  const citeLinks = contentRef.value.querySelectorAll('.cite-link[data-preview="true"]')
-  citeLinks.forEach(link => {
-    // 移除旧事件（防止重复绑定）
-    link.removeEventListener('click', handleCiteClick)
-    // 添加新事件
-    link.addEventListener('click', handleCiteClick)
-  })
-}
-
-// 引用链接点击处理
+// 引用链接点击处理 - 使用事件委托
 const handleCiteClick = (e) => {
-  e.preventDefault()
-  const href = e.currentTarget.getAttribute('href')
-  const title = e.currentTarget.getAttribute('data-doc-title') || '未命名文档'
-  // 优先使用原始文件名（包含扩展名），如果没有则使用文档标题
-  const fileName = e.currentTarget.getAttribute('data-file-name') || title
-  // 获取 doc_id 用于后端下载
-  const docId = e.currentTarget.getAttribute('data-doc-id')
+  // 查找最近的 .cite-link 元素
+  const link = e.target.closest('.cite-link[data-preview="true"]')
+  if (!link) return
   
-  if (docId) {
+  e.preventDefault()
+  e.stopPropagation()
+  
+  const href = link.getAttribute('href')
+  const title = link.getAttribute('data-doc-title') || '未命名文档'
+  // 优先使用原始文件名（包含扩展名），如果没有则使用文档标题
+  const fileName = link.getAttribute('data-file-name') || title
+  // 获取 doc_id 用于后端下载
+  const docId = link.getAttribute('data-doc-id')
+  
+  console.log('[ChatMessage] Cite link clicked:', { href, title, fileName, docId })
+  
+  if (docId && docId.trim() !== '') {
     // 使用后端下载端点，避免跨域问题
     const downloadUrl = `/files/download/${docId}`
     previewFile.value = { url: downloadUrl, name: fileName }
     previewVisible.value = true
-    console.log('[ChatMessage] Opening preview:', { url: downloadUrl, name: fileName, originalUrl: href })
-  } else if (href) {
+    console.log('[ChatMessage] Opening preview with docId:', { url: downloadUrl, name: fileName, originalUrl: href })
+  } else if (href && href !== 'null' && href !== 'undefined') {
     // 兼容旧数据：直接使用原始 URL
     previewFile.value = { url: href, name: fileName }
     previewVisible.value = true
     console.log('[ChatMessage] Opening preview (fallback):', { url: href, name: fileName })
+  } else {
+    console.error('[ChatMessage] Cannot preview: no valid docId or href', { href, docId })
+    alert('无法预览该文件：缺少文件信息')
   }
+}
+
+// 绑定引用链接点击事件 - 使用事件委托
+const bindCiteLinkEvents = () => {
+  if (!contentRef.value) return
+  
+  // 使用事件委托，直接绑定到容器元素
+  contentRef.value.removeEventListener('click', handleCiteClick)
+  contentRef.value.addEventListener('click', handleCiteClick)
+  
+  const citeLinks = contentRef.value.querySelectorAll('.cite-link[data-preview="true"]')
+  console.log('[ChatMessage] Bound click events to', citeLinks.length, 'cite links')
 }
 
 // 渲染完成后绑定事件

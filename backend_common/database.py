@@ -12,13 +12,27 @@ from backend_common.config import settings
 
 logger = logging.getLogger(__name__)
 
-# 创建引擎
+# 创建引擎（添加 utf8mb4 字符集支持中文）
+# 确保使用 utf8mb4 字符集
+connect_args = {
+    "charset": "utf8mb4",
+}
+
+# 如果 URL 中没有 charset 参数，添加它
+_database_url = settings.DATABASE_URL
+if "charset=" not in _database_url:
+    if "?" in _database_url:
+        _database_url += "&charset=utf8mb4"
+    else:
+        _database_url += "?charset=utf8mb4"
+
 engine = create_engine(
-    settings.DATABASE_URL,
+    _database_url,
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,
-    echo=settings.DEBUG
+    echo=settings.DEBUG,
+    connect_args=connect_args
 )
 
 # 创建会话工厂
@@ -74,11 +88,24 @@ class DatabaseClient:
         if self._initialized:
             return
         
+        # 确保使用 utf8mb4 字符集
+        _database_url = settings.DATABASE_URL
+        if "charset=" not in _database_url:
+            if "?" in _database_url:
+                _database_url += "&charset=utf8mb4"
+            else:
+                _database_url += "?charset=utf8mb4"
+        
+        connect_args = {
+            "charset": "utf8mb4",
+        }
+        
         self.engine = create_engine(
-            settings.DATABASE_URL,
+            _database_url,
             pool_size=5,
             max_overflow=10,
-            pool_pre_ping=True
+            pool_pre_ping=True,
+            connect_args=connect_args
         )
         self.SessionLocal = sessionmaker(
             autocommit=False, 

@@ -102,6 +102,7 @@ class OpenSearchStore(OpenSearchClient):
                         "chunk_id": {"type": "keyword"},
                         "doc_id": {"type": "keyword"},
                         "doc_url": {"type": "keyword"},
+                        "file_name": {"type": "keyword"},
                         "title": {
                             "type": "text",
                             "analyzer": "standard",
@@ -211,6 +212,7 @@ class OpenSearchStore(OpenSearchClient):
                     'chunk_id': getattr(chunk, 'id', getattr(chunk, 'chunk_id', '')),
                     'doc_id': getattr(chunk, 'doc_id', ''),
                     'doc_url': getattr(chunk, 'doc_url', ''),
+                    'file_name': getattr(chunk, 'file_name', ''),
                     'title': getattr(chunk, 'title', ''),
                     'content': getattr(chunk, 'content', ''),
                     'chunk_index': getattr(chunk, 'chunk_index', 0),

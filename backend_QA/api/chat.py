@@ -10,12 +10,14 @@ import time
 import uuid
 from typing import List, Optional, Literal, AsyncIterator
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
 from backend_QA.core.graph import rag_graph
 from backend_QA.core.state import GraphState
 from backend_QA.services.llm import llm_client
+from backend_QA.services.chat_history import chat_history_service
+from backend_QA.api.auth import get_current_user_id, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = Field(default=True, description="是否流式输出")
     model: Optional[str] = Field(default="deepseek-chat", description="模型名称")
     temperature: Optional[float] = Field(default=0.2, description="采样温度")
+    session_id: Optional[str] = Field(default=None, description="会话ID，用于关联历史对话")
 
 
 class ChatCompletionResponse(BaseModel):
@@ -100,11 +103,19 @@ def get_friendly_error(error_msg: str) -> str:
     return error_msg
 
 
-async def stream_rag_with_context(question: str) -> AsyncIterator[tuple[str, any]]:
+async def stream_rag_with_context(
+    question: str, 
+    history_messages: List[dict] = None,
+    user_id: int = None
+) -> AsyncIterator[tuple[str, any]]:
     """
     流式生成 RAG 答案。
 
     先 yield 文档元数据，然后 yield 生成的文本片段。
+
+    Args:
+        question: 用户问题
+        history_messages: 历史对话消息列表
 
     Yields:
         tuple: ("docs", docs_list) 或 ("token", text)
@@ -160,18 +171,22 @@ async def stream_rag_with_context(question: str) -> AsyncIterator[tuple[str, any
         # 先返回文档元数据
         docs_meta = []
         for i, doc in enumerate(docs):
+            metadata = doc.get("metadata", {})
             docs_meta.append({
                 "index": i + 1,
-                "title": doc.get("title", "") or doc.get("metadata", {}).get("title", f"文档 {i+1}"),
-                "doc_url": doc.get("doc_url", "") or doc.get("metadata", {}).get("doc_url", ""),
-                "metadata": doc.get("metadata", {})
+                "doc_id": doc.get("doc_id") or metadata.get("doc_id"),  # 文档ID，用于下载
+                "title": doc.get("title") or metadata.get("title", f"文档 {i+1}"),
+                "doc_url": doc.get("doc_url") or metadata.get("doc_url", ""),
+                "file_name": doc.get("file_name") or metadata.get("file_name", ""),  # 原始文件名（包含扩展名）
+                "metadata": metadata
             })
         yield ("docs", docs_meta)
         
-        # 然后流式返回答案
+        # 然后流式返回答案（传入历史对话）
         async for token in llm_client.generate_stream(
             question=question,
-            context_docs=docs
+            context_docs=docs,
+            history_messages=history_messages
         ):
             yield ("token", token)
             
@@ -181,11 +196,15 @@ async def stream_rag_with_context(question: str) -> AsyncIterator[tuple[str, any
 
 
 @router.post("/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(
+    request: ChatCompletionRequest,
+    current_user_id: int = Depends(get_current_user_id)
+):
     """
     智能问答流式接口。
 
     接收用户问题，经 RAG 流程处理后返回流式答案。
+    支持 session_id 关联历史对话。
 
     Args:
         request: 聊天完成请求
@@ -195,6 +214,7 @@ async def chat_completions(request: ChatCompletionRequest):
     """
     try:
         question = extract_question(request.messages)
+        session_id = request.session_id
 
         if not question:
             return StreamingResponse(
@@ -202,21 +222,33 @@ async def chat_completions(request: ChatCompletionRequest):
                 media_type="text/event-stream"
             )
 
-        logger.info(f"Chat completions request: {question[:50]}...")
+        logger.info(f"Chat completions request: question={question[:50]}..., session_id={session_id}")
+
+        # 获取历史对话上下文
+        history_messages = []
+        if session_id:
+            history_messages = await chat_history_service.get_context_with_trim(
+                user_id=current_user_id,
+                session_id=session_id
+            )
+            logger.info(f"Loaded {len(history_messages)} messages from history for user {current_user_id}, session {session_id}")
 
         if request.stream:
             # 流式响应
             async def generate_sse():
                 chat_id = f"chatcmpl-{uuid.uuid4().hex}"
                 created = int(time.time())
+                full_answer = ""  # 收集完整答案
                 
-                async for item_type, data in stream_rag_with_context(question):
+                async for item_type, data in stream_rag_with_context(question, history_messages, current_user_id):
                     if item_type == "docs":
                         # 发送文档元数据作为特殊事件
                         event_data = json.dumps({"docs": data}, ensure_ascii=False)
                         yield f"event: context_docs\ndata: {event_data}\n\n"
                     
                     elif item_type == "token":
+                        # 收集答案
+                        full_answer += data
                         # 发送标准 OpenAI 格式的 SSE 消息
                         chunk = {
                             "id": chat_id,
@@ -241,6 +273,22 @@ async def chat_completions(request: ChatCompletionRequest):
                 
                 # 结束标记
                 yield "data: [DONE]\n\n"
+                
+                # 保存对话历史（在流结束后）
+                if session_id:
+                    try:
+                        tokens_used = chat_history_service.count_tokens(question + full_answer)
+                        await chat_history_service.save_chat(
+                            user_id=current_user_id,
+                            session_id=session_id,
+                            user_message=question,
+                            assistant_message=full_answer,
+                            model=request.model,
+                            tokens_used=tokens_used
+                        )
+                        logger.info(f"Saved chat history for session {session_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to save chat history: {str(e)}")
             
             return StreamingResponse(
                 content=generate_sse(),
@@ -267,6 +315,22 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
             
             answer = final_state.get("answer", "")
+
+            # 保存对话历史
+            if session_id:
+                try:
+                    tokens_used = chat_history_service.count_tokens(question + answer)
+                    await chat_history_service.save_chat(
+                        user_id=current_user_id,
+                        session_id=session_id,
+                        user_message=question,
+                        assistant_message=answer,
+                        model=request.model,
+                        tokens_used=tokens_used
+                    )
+                    logger.info(f"Saved chat history for session {session_id}")
+                except Exception as e:
+                    logger.error(f"Failed to save chat history: {str(e)}")
 
             response = {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",

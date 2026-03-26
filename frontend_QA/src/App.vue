@@ -1,17 +1,10 @@
 <template>
   <div class="app">
-    <header class="header">
-      <h1>Smart RAGFlow</h1>
-      <p class="subtitle">智能问答系统</p>
-    </header>
-    <main class="main">
-      <ChatView />
-    </main>
+    <router-view />
   </div>
 </template>
 
 <script setup>
-import ChatView from './views/ChatView.vue'
 </script>
 
 <style>
@@ -22,40 +15,58 @@ import ChatView from './views/ChatView.vue'
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f5f5f5;
-  color: #333;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC', sans-serif;
+  background-color: #1a1a2e;
+  color: #fff;
+  line-height: 1.6;
 }
 
 .app {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
 }
 
-.header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 20px;
-  text-align: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+/* 全局滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.header h1 {
-  font-size: 24px;
-  font-weight: 600;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.subtitle {
-  font-size: 14px;
-  opacity: 0.9;
-  margin-top: 5px;
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
 }
 
-.main {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  padding: 20px;
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 全局选中样式 */
+::selection {
+  background: rgba(102, 126, 234, 0.3);
+  color: #fff;
+}
+
+/* 全局链接样式 */
+a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #5a6fd6;
+}
+
+/* 全局按钮样式 */
+button {
+  font-family: inherit;
+}
+
+/* 全局输入框样式 */
+input, textarea {
+  font-family: inherit;
 }
 </style>

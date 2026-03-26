@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
 import httpx
+from urllib.parse import quote
 
 from backend_common import Document, DatabaseClient
 
@@ -87,11 +88,22 @@ async def download_file(doc_id: str):
             
             logger.info(f"Returning file: {file_name}, type: {content_type}, size: {len(response.content)}")
             
+            # 对文件名进行 RFC 5987 编码（支持中文）
+            # filename* 使用 UTF-8 编码，filename 使用 ASCII 替代名（兼容性）
+            encoded_filename = quote(file_name, safe='')
+            ascii_filename = file_name.encode('ascii', 'ignore').decode()
+            if not ascii_filename:
+                ascii_filename = 'download'
+            
+            content_disposition = f"inline; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}"
+            
+            logger.info(f"Returning file: {file_name}, type: {content_type}, size: {len(response.content)}")
+            
             return Response(
                 content=response.content,
                 media_type=content_type,
                 headers={
-                    "Content-Disposition": f'inline; filename="{file_name}"',
+                    "Content-Disposition": content_disposition,
                     "Cache-Control": "public, max-age=3600",
                 }
             )
