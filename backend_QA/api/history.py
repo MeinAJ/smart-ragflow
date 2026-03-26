@@ -128,7 +128,7 @@ async def get_session_history(
 @router.get("/sessions/{session_id}/messages", response_model=MessagesResponse)
 async def get_session_messages(
     session_id: str,
-    limit: int = Query(default=20, ge=1, le=50, description="最近N轮对话"),
+    limit: int = Query(default=20, ge=1, le=200, description="最近N轮对话"),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """

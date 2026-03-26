@@ -33,7 +33,7 @@
             :current-session-id="currentSessionId"
             :editing-session-id="editingSessionId"
             :editing-session-name="editingSessionName"
-            @switch="switchSession"
+            @switch="switchSession(session)"
             @delete="confirmDeleteSession"
             @edit="startEditSessionName"
             @save-name="saveSessionName"
@@ -53,7 +53,7 @@
             :current-session-id="currentSessionId"
             :editing-session-id="editingSessionId"
             :editing-session-name="editingSessionName"
-            @switch="switchSession"
+            @switch="switchSession(session)"
             @delete="confirmDeleteSession"
             @edit="startEditSessionName"
             @save-name="saveSessionName"
@@ -73,7 +73,7 @@
             :current-session-id="currentSessionId"
             :editing-session-id="editingSessionId"
             :editing-session-name="editingSessionName"
-            @switch="switchSession"
+            @switch="switchSession(session)"
             @delete="confirmDeleteSession"
             @edit="startEditSessionName"
             @save-name="saveSessionName"
@@ -93,7 +93,7 @@
             :current-session-id="currentSessionId"
             :editing-session-id="editingSessionId"
             :editing-session-name="editingSessionName"
-            @switch="switchSession"
+            @switch="switchSession(session)"
             @delete="confirmDeleteSession"
             @edit="startEditSessionName"
             @save-name="saveSessionName"
@@ -113,7 +113,7 @@
             :current-session-id="currentSessionId"
             :editing-session-id="editingSessionId"
             :editing-session-name="editingSessionName"
-            @switch="switchSession"
+            @switch="switchSession(session)"
             @delete="confirmDeleteSession"
             @edit="startEditSessionName"
             @save-name="saveSessionName"
@@ -144,6 +144,11 @@
 
     <!-- 主聊天区域 -->
     <main class="chat-main">
+      <!-- 会话标题栏 -->
+      <div v-if="currentSessionId && currentSessionName" class="session-header">
+        <span class="session-header-title">{{ currentSessionName }}</span>
+      </div>
+      
       <!-- 消息列表 -->
       <div class="messages-container" ref="messagesContainer">
         <!-- 欢迎页面 -->
@@ -192,8 +197,14 @@
           </div>
         </div>
         
+        <!-- 加载历史消息提示 -->
+        <div v-if="isLoadingHistory" class="loading-history">
+          <div class="spinner"></div>
+          <span>加载历史消息...</span>
+        </div>
+        
         <!-- 聊天消息列表 -->
-        <template v-else>
+        <template v-else-if="messages.length > 0">
           <ChatMessage
             v-for="(msg, index) in messages"
             :key="index"
@@ -254,10 +265,12 @@ const router = useRouter()
 const messages = ref([])
 const inputMessage = ref('')
 const isLoading = ref(false)
+const isLoadingHistory = ref(false)  // 新增：加载历史消息状态
 const error = ref('')
 const messagesContainer = ref(null)
 const inputRef = ref(null)
 const currentSessionId = ref('')
+const currentSessionName = ref('')   // 新增：当前会话名称
 const sessionList = ref([])
 const user = ref(getUser())
 
@@ -376,23 +389,30 @@ const togglePinSession = async (session) => {
 // 创建新会话
 const createNewSession = () => {
   currentSessionId.value = ''
+  currentSessionName.value = ''
   messages.value = []
   error.value = ''
   console.log('[ChatView] Created new session')
 }
 
 // 切换会话
-const switchSession = async (sessionId) => {
+const switchSession = async (session) => {
+  const sessionId = session.session_id
   if (sessionId === currentSessionId.value) return
   
   currentSessionId.value = sessionId
+  currentSessionName.value = session.session_name || getSessionTitle(session)
   messages.value = []
   error.value = ''
+  isLoadingHistory.value = true
   
-  // 加载该会话的历史消息
-  await loadSessionMessages(sessionId)
-  
-  console.log('[ChatView] Switched to session:', sessionId)
+  try {
+    // 加载该会话的历史消息
+    await loadSessionMessages(sessionId)
+    console.log('[ChatView] Switched to session:', sessionId)
+  } finally {
+    isLoadingHistory.value = false
+  }
 }
 
 // 加载会话消息
@@ -409,8 +429,13 @@ const loadSessionMessages = async (sessionId) => {
       role: msg.role,
       content: msg.content,
       isStreaming: false,
-      contextDocs: []
+      contextDocs: msg.context_docs || []
     }))
+    
+    // 滚动到底部
+    nextTick(() => {
+      scrollToBottom()
+    })
   } else {
     messages.value = []
   }
@@ -422,9 +447,11 @@ const confirmDeleteSession = async (sessionId) => {
   
   const success = await deleteSession(sessionId)
   if (success) {
-    // 如果删除的是当前会话，创建新会话
+    // 如果删除的是当前会话，清空当前会话状态
     if (sessionId === currentSessionId.value) {
-      createNewSession()
+      currentSessionId.value = ''
+      currentSessionName.value = ''
+      messages.value = []
     }
     // 刷新列表
     await loadSessionList()
@@ -785,12 +812,62 @@ onMounted(() => {
   flex-direction: column;
   background: #1a1a2e;
   min-width: 0;
+  align-items: center;
+}
+
+/* 会话标题栏 */
+.session-header {
+  width: 100%;
+  max-width: 850px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-header-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+  width: 100%;
+  max-width: 850px;
+}
+
+/* 加载历史消息 */
+.loading-history {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.loading-history .spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .messages-container::-webkit-scrollbar {
@@ -830,7 +907,7 @@ onMounted(() => {
 
 .input-area {
   width: 100%;
-  max-width: 700px;
+  max-width: 850px;
 }
 
 .input-wrapper {
@@ -937,10 +1014,12 @@ onMounted(() => {
 .chat-input-container {
   padding: 16px 20px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
+  max-width: 850px;
 }
 
 .chat-input-container .input-wrapper {
-  max-width: 900px;
+  max-width: 850px;
   margin: 0 auto;
 }
 

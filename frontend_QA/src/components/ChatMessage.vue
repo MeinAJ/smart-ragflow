@@ -177,10 +177,11 @@ onUpdated(() => {
 .message {
   display: flex;
   gap: 12px;
-  padding: 16px;
+  padding: 16px 20px;
   margin-bottom: 8px;
   border-radius: 12px;
   animation: fadeIn 0.3s ease;
+  max-width: 100%;
 }
 
 @keyframes fadeIn {
@@ -195,11 +196,20 @@ onUpdated(() => {
 }
 
 .message.user {
-  background-color: #f0f7ff;
+  background-color: rgba(102, 126, 234, 0.1);
+  flex-direction: row-reverse;
+}
+
+.message.user .content {
+  align-items: flex-end;
 }
 
 .message.assistant {
-  background-color: #f8f9fa;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.message.user .role-label {
+  text-align: right;
 }
 
 .avatar {
@@ -222,14 +232,18 @@ onUpdated(() => {
 
 .role-label {
   font-size: 12px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 4px;
   font-weight: 500;
 }
 
+.message.user .role-label {
+  color: rgba(102, 126, 234, 0.8);
+}
+
 :deep(.markdown-body) {
   line-height: 1.6;
-  color: #333;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 :deep(.markdown-body p) {
@@ -241,7 +255,7 @@ onUpdated(() => {
 }
 
 :deep(.markdown-body pre) {
-  background: #f4f4f4;
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   padding: 12px;
   overflow-x: auto;
@@ -259,10 +273,10 @@ onUpdated(() => {
 }
 
 :deep(.markdown-body :not(pre) > code) {
-  background: #f0f0f0;
+  background: rgba(255, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #e83e8c;
+  color: #ff7eb6;
 }
 
 :deep(.markdown-body h1,
@@ -284,10 +298,10 @@ onUpdated(() => {
 }
 
 :deep(.markdown-body blockquote) {
-  border-left: 4px solid #ddd;
+  border-left: 4px solid rgba(102, 126, 234, 0.5);
   padding-left: 16px;
   margin: 8px 0;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 :deep(.markdown-body table) {
@@ -298,13 +312,13 @@ onUpdated(() => {
 
 :deep(.markdown-body th,
 .markdown-body td) {
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px 12px;
   text-align: left;
 }
 
 :deep(.markdown-body th) {
-  background: #f5f5f5;
+  background: rgba(255, 255, 255, 0.1);
   font-weight: 600;
 }
 

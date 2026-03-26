@@ -152,10 +152,12 @@ class ChatHistoryService:
                        model: str = "", tokens_used: int = 0):
         """保存对话到 MySQL 和 Redis。"""
         import asyncio
+        from functools import partial
         loop = asyncio.get_event_loop()
         
-        # 确保会话存在
-        await loop.run_in_executor(None, self.get_or_create_session, user_id, session_id)
+        # 确保会话存在，使用用户的第一条消息作为会话名称
+        get_or_create = partial(self.get_or_create_session, user_id, session_id, None, user_message)
+        await loop.run_in_executor(None, get_or_create)
         
         # 保存到 MySQL
         await loop.run_in_executor(
@@ -226,8 +228,42 @@ class ChatHistoryService:
         finally:
             db.close()
     
-    def get_or_create_session(self, user_id: int, session_id: str, session_name: str = None) -> UserSession:
-        """获取或创建会话。"""
+    def _generate_session_name(self, first_message: str = None, max_length: int = 50) -> str:
+        """
+        生成会话名称。
+        
+        如果提供了第一条消息，使用消息内容作为名称（截取前 max_length 个字符）
+        否则使用默认格式：新对话 MM-DD HH:MM
+        
+        Args:
+            first_message: 用户的第一条消息
+            max_length: 会话名称最大长度
+            
+        Returns:
+            str: 生成的会话名称
+        """
+        if first_message:
+            # 清理消息内容：去除首尾空格和换行
+            cleaned = first_message.strip().replace('\n', ' ').replace('\r', '')
+            # 截取前 max_length 个字符
+            if len(cleaned) > max_length:
+                return cleaned[:max_length] + '...'
+            return cleaned
+        else:
+            from datetime import datetime
+            return f"新对话 {datetime.now().strftime('%m-%d %H:%M')}"
+    
+    def get_or_create_session(self, user_id: int, session_id: str, session_name: str = None, 
+                              first_message: str = None) -> UserSession:
+        """
+        获取或创建会话。
+        
+        Args:
+            user_id: 用户ID
+            session_id: 会话ID
+            session_name: 指定的会话名称（优先级最高）
+            first_message: 用户的第一条消息（用于生成会话名称）
+        """
         db = db_client.get_session()
         try:
             session = db.query(UserSession).filter(
@@ -236,10 +272,9 @@ class ChatHistoryService:
             ).first()
             
             if not session:
-                # 生成默认会话名称
+                # 生成会话名称：优先级：session_name > first_message > 默认
                 if not session_name:
-                    from datetime import datetime
-                    session_name = f"新对话 {datetime.now().strftime('%m-%d %H:%M')}"
+                    session_name = self._generate_session_name(first_message)
                 
                 session = UserSession(
                     user_id=user_id,
@@ -251,7 +286,7 @@ class ChatHistoryService:
                 db.add(session)
                 db.commit()
                 db.refresh(session)
-                logger.info(f"Created new session: {session_id} for user {user_id}")
+                logger.info(f"Created new session: {session_id} with name: {session_name} for user {user_id}")
             
             return session
             
