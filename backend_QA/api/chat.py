@@ -168,17 +168,19 @@ async def stream_rag_with_context(
             yield ("error", "未找到相关参考资料，请尝试用其他方式描述您的问题")
             return
         
-        # 先返回文档元数据
+        # 先返回文档元数据（仅用于展示，不包含下载链接）
         docs_meta = []
         for i, doc in enumerate(docs):
             metadata = doc.get("metadata", {})
+            doc_id = doc.get("doc_id") or metadata.get("doc_id")
+            file_name = doc.get("file_name") or metadata.get("file_name", "")
+            
             docs_meta.append({
                 "index": i + 1,
-                "doc_id": doc.get("doc_id") or metadata.get("doc_id"),  # 文档ID，用于下载
+                "doc_id": doc_id,
                 "title": doc.get("title") or metadata.get("title", f"文档 {i+1}"),
-                "doc_url": doc.get("doc_url") or metadata.get("doc_url", ""),
-                "file_name": doc.get("file_name") or metadata.get("file_name", ""),  # 原始文件名（包含扩展名）
-                "metadata": metadata
+                "file_name": file_name,
+                "source": "rag_doc",  # 标记为RAG召回的内部文档
             })
         yield ("docs", docs_meta)
         

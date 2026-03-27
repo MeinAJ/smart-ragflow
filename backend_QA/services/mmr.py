@@ -66,28 +66,28 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     """
     if len(vec1) != len(vec2):
         raise ValueError(f"向量维度不匹配: {len(vec1)} vs {len(vec2)}")
-    
+
     # 转换为 numpy 数组以提高计算效率
     v1 = np.array(vec1)
     v2 = np.array(vec2)
-    
+
     # 计算向量的 L2 范数（长度）
     norm1 = np.linalg.norm(v1)
     norm2 = np.linalg.norm(v2)
-    
+
     # 处理零向量情况
     if norm1 == 0 or norm2 == 0:
         return 0.0
-    
+
     # 计算余弦相似度
     return float(np.dot(v1, v2) / (norm1 * norm2))
 
 
 def mmr_rerank(
-    query_vector: List[float],
-    documents: List[Dict[str, Any]],
-    lambda_param: float = 0.7,
-    top_k: int = 5
+        query_vector: List[float],
+        documents: List[Dict[str, Any]],
+        lambda_param: float = 0.7,
+        top_k: int = 5
 ) -> List[Dict[str, Any]]:
     """
     使用 MMR 算法对检索结果进行重排序。
@@ -127,54 +127,54 @@ def mmr_rerank(
     # 参数校验
     if not 0 <= lambda_param <= 1:
         raise ValueError(f"lambda_param 必须在 [0, 1] 范围内，当前值: {lambda_param}")
-    
+
     if not documents:
         logger.warning("MMR 重排序收到空文档列表")
         return []
-    
+
     # 过滤掉没有向量的文档
     valid_docs = [
-        doc for doc in documents 
-        if doc.get("vector") and len(doc["vector"]) > 0
+        doc for doc in documents
+        if doc.get("metadata", {}).get("embedding", "") and len(doc.get("metadata", {}).get("embedding", "")) > 0
     ]
-    
+
     if len(valid_docs) < len(documents):
         logger.warning(f"过滤了 {len(documents) - len(valid_docs)} 个无效文档（缺少向量）")
-    
+
     if not valid_docs:
         logger.error("没有有效的文档可供重排序")
         return []
-    
+
     # 限制返回数量
     if top_k > len(valid_docs):
         top_k = len(valid_docs)
-    
+
     logger.info(f"MMR 重排序: {len(valid_docs)} 个文档，lambda={lambda_param}, top_k={top_k}")
-    
+
     # 预计算查询与所有文档的相似度
     query_similarities = {}
     for doc in valid_docs:
         try:
-            query_similarities[id(doc)] = cosine_similarity(query_vector, doc["vector"])
+            query_similarities[id(doc)] = cosine_similarity(query_vector, doc.get("metadata", {}).get("embedding", []))
         except Exception as e:
             logger.warning(f"计算查询与文档相似度失败: {e}")
             query_similarities[id(doc)] = 0.0
-    
+
     selected: List[Dict[str, Any]] = []
     remaining = valid_docs.copy()
-    
+
     # 贪心选择 top_k 个文档
     for i in range(top_k):
         if not remaining:
             break
-        
+
         # 计算每个候选文档的 MMR 分数
         mmr_scores = []
-        
+
         for doc in remaining:
             # 与查询的相似度（相关性）
             query_sim = query_similarities.get(id(doc), 0.0)
-            
+
             # 与已选文档的最大相似度（冗余度）
             max_selected_sim = 0.0
             if selected:
@@ -187,38 +187,38 @@ def mmr_rerank(
                         logger.debug(f"计算文档间相似度失败: {e}")
                         similarities.append(0.0)
                 max_selected_sim = max(similarities) if similarities else 0.0
-            
+
             # MMR 分数计算
             # λ * 相关性 - (1-λ) * 冗余度
             mmr_score = lambda_param * query_sim - (1 - lambda_param) * max_selected_sim
             mmr_scores.append((doc, mmr_score))
-            
+
             logger.debug(
                 f"文档 {doc.get('id', 'unknown')}: "
                 f"query_sim={query_sim:.4f}, "
                 f"max_selected_sim={max_selected_sim:.4f}, "
                 f"mmr_score={mmr_score:.4f}"
             )
-        
+
         # 选择 MMR 分数最高的文档
         best_doc, best_score = max(mmr_scores, key=lambda x: x[1])
         selected.append(best_doc)
         remaining.remove(best_doc)
-        
+
         logger.info(
-            f"第 {i+1} 轮选择: doc_id={best_doc.get('id', 'unknown')}, "
+            f"第 {i + 1} 轮选择: doc_id={best_doc.get('id', 'unknown')}, "
             f"mmr_score={best_score:.4f}"
         )
-    
+
     logger.info(f"MMR 重排序完成，返回 {len(selected)} 个文档")
     return selected
 
 
 def mmr_rerank_with_scores(
-    query_vector: List[float],
-    documents: List[Dict[str, Any]],
-    lambda_param: float = 0.7,
-    top_k: int = 5
+        query_vector: List[float],
+        documents: List[Dict[str, Any]],
+        lambda_param: float = 0.7,
+        top_k: int = 5
 ) -> List[tuple[Dict[str, Any], float]]:
     """
     使用 MMR 算法重排序，并返回分数。
@@ -243,36 +243,36 @@ def mmr_rerank_with_scores(
     # 参数校验（与 mmr_rerank 相同）
     if not 0 <= lambda_param <= 1:
         raise ValueError(f"lambda_param 必须在 [0, 1] 范围内")
-    
+
     if not documents:
         return []
-    
+
     valid_docs = [doc for doc in documents if doc.get("vector")]
-    
+
     if not valid_docs:
         return []
-    
+
     if top_k > len(valid_docs):
         top_k = len(valid_docs)
-    
+
     # 预计算相似度
     query_similarities = {
         id(doc): cosine_similarity(query_vector, doc["vector"])
         for doc in valid_docs
     }
-    
+
     selected: List[tuple[Dict[str, Any], float]] = []
     remaining = valid_docs.copy()
-    
+
     for _ in range(top_k):
         if not remaining:
             break
-        
+
         mmr_scores = []
-        
+
         for doc in remaining:
             query_sim = query_similarities.get(id(doc), 0.0)
-            
+
             max_selected_sim = 0.0
             if selected:
                 similarities = [
@@ -280,12 +280,12 @@ def mmr_rerank_with_scores(
                     for sel_doc, _ in selected
                 ]
                 max_selected_sim = max(similarities)
-            
+
             mmr_score = lambda_param * query_sim - (1 - lambda_param) * max_selected_sim
             mmr_scores.append((doc, mmr_score))
-        
+
         best_doc, best_score = max(mmr_scores, key=lambda x: x[1])
         selected.append((best_doc, best_score))
         remaining.remove(best_doc)
-    
+
     return selected

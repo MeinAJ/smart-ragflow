@@ -163,7 +163,7 @@
                 class="message-input"
                 placeholder="给 Smart RAGFlow 发送消息..."
                 rows="1"
-                @keydown.enter.prevent="handleEnter"
+                @keydown.enter="handleEnter"
                 @input="autoResize"
                 ref="inputRef"
               ></textarea>
@@ -231,7 +231,7 @@
             class="message-input"
             placeholder="输入消息..."
             rows="1"
-            @keydown.enter.prevent="handleEnter"
+            @keydown.enter="handleEnter"
             @input="autoResize"
             ref="inputRef"
           ></textarea>
@@ -477,9 +477,14 @@ const autoResize = () => {
 
 // 处理回车键
 const handleEnter = (e) => {
+  // 如果正在输入法组合中（有候选词），不发送消息，让输入法选择候选词
+  if (e.isComposing) {
+    return
+  }
   if (e.shiftKey) {
     return
   }
+  e.preventDefault()
   sendMessage()
 }
 

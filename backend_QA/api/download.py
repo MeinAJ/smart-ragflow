@@ -116,17 +116,4 @@ async def download_file(doc_id: str):
         raise HTTPException(status_code=500, detail="文件下载失败")
 
 
-@router.get("/preview/{doc_id}")
-async def preview_file(doc_id: str):
-    """
-    预览文档文件（用于 iframe 嵌入）。
-    
-    与 download 接口相同，但 Content-Disposition 设置为 inline。
-    
-    Args:
-        doc_id: 文档 ID
-        
-    Returns:
-        Response: 文件内容
-    """
-    return await download_file(doc_id)
+

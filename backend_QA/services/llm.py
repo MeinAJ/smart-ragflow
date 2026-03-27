@@ -67,15 +67,22 @@ class LLMClient:
     # 系统 Prompt 模板
     SYSTEM_PROMPT = """你是一个智能助手，基于提供的参考资料回答用户问题。
 
-要求：
-1. 仅基于提供的参考资料回答，不要添加外部知识
-2. 如果参考资料不足以回答问题，请明确说明
-3. 回答应准确、简洁、有帮助
-4. 适当引用参考资料的来源
-
-参考资料：
+【参考资料】（共{doc_count}篇）：
 {context}
-"""
+
+请基于以上参考资料回答用户问题。回答应当准确、简洁、专业。
+
+【格式要求 - 强制】
+1. 必须严格使用标准 Markdown 格式输出
+2. 如果参考资料中的内容包含特殊字符（如 *、_、`、[、]、(、)、# 等）会污染 Markdown 格式，你必须自行调整转义或重新组织语言，确保输出是合法的 Markdown
+3. 适当使用以下 Markdown 元素：
+   - 标题：使用 # ## ### 层级
+   - 列表：使用 - 或 1. 2. 3.
+   - 代码块：使用 ``` 包裹
+   - 强调：使用 **加粗** 或 *斜体*
+   - 引用：使用 > 
+4. 禁止输出任何非法 Markdown 语法或可能导致渲染失败的内容
+5. 如果原文内容无法直接放入 Markdown，请用自己的话重新表述，不要破坏格式"""
 
     def __init__(self):
         """初始化 LLM 客户端。"""
@@ -129,10 +136,19 @@ class LLMClient:
             for i, doc in enumerate(context_docs, 1):
                 content = doc.get("content", "")
                 title = doc.get("title", f"文档{i}")
-                context_parts.append(f"[{i}] 《{title}》：{content}")
+                
+                # 构建文档引用信息
+                context_parts.append(
+                    f"【文档{i}】\n"
+                    f"标题: {title}\n"
+                    f"内容: {content}"
+                )
             
             context_text = "\n\n".join(context_parts)
-            system_content = self.SYSTEM_PROMPT.format(context=context_text)
+            system_content = self.SYSTEM_PROMPT.format(
+                context=context_text,
+                doc_count=len(context_docs)
+            )
         else:
             system_content = "你是一个有帮助的助手。"
         

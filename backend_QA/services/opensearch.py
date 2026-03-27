@@ -153,11 +153,16 @@ class OpenSearchClient:
                 if normalized_score < min_score:
                     continue
 
+                source = hit.get("_source", {})
+                metadata = {k: v for k, v in source.items() if k != text_field}
+                
                 doc = {
                     "id": hit.get("_id"),
-                    "content": hit.get("_source", {}).get(text_field, ""),
-                    "metadata": {k: v for k, v in hit.get("_source", {}).items() if
-                                 k != text_field},
+                    "content": source.get(text_field, ""),
+                    "title": source.get(title_field, ""),
+                    "file_name": source.get("file_name", ""),
+                    "doc_url": source.get("doc_url", ""),
+                    "metadata": metadata,
                     "score": round(normalized_score, 4),  # 归一化分数 0-1
                     "raw_score": round(raw_score, 4),  # 原始分数（用于调试）
                 }
