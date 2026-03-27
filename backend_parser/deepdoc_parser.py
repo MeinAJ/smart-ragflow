@@ -203,12 +203,26 @@ class DeepDocParser:
             return self._create_mock_result(file_path)
 
     def _parse_word(self, file_path: Path) -> ParseResult:
-        """解析 Word 文件。"""
+        """解析 Word 文件。
+        
+        注意：python-docx 只支持 .docx 格式（Word 2007+），不支持旧的 .doc 二进制格式。
+        如果传入 .doc 文件，会尝试解析，但如果是旧的二进制格式会报错。
+        """
         try:
             import docx
+            from docx.opc.exceptions import PackageNotFoundError
         except ImportError:
             logger.warning("python-docx not installed, using basic implementation")
             return self._create_mock_result(file_path)
+
+        # 检查文件扩展名，提供更有帮助的错误信息
+        extension = file_path.suffix.lower()
+        if extension == ".doc":
+            logger.warning(
+                f"File {file_path.name} has .doc extension. "
+                f"Note: Only .docx format (Word 2007+) is supported. "
+                f"Old .doc binary format is not supported."
+            )
 
         try:
             doc = docx.Document(file_path)
@@ -254,6 +268,23 @@ class DeepDocParser:
                 success=True
             )
 
+        except PackageNotFoundError as e:
+            # 处理文件格式错误（如内容类型不匹配）
+            error_msg = str(e)
+            logger.error(f"Word parsing error - invalid file format: {error_msg}")
+            
+            # 提供更友好的错误信息
+            if "is not a Word file" in error_msg or "content type" in error_msg.lower():
+                user_msg = (
+                    f"文件 '{file_path.name}' 不是有效的 Word 文档。"
+                    f"检测到内容类型异常：{error_msg}。"
+                    f"可能原因：(1) 文件已损坏；(2) 这是旧的 .doc 二进制格式文件，"
+                    f"请转换为 .docx 格式后重试；(3) 文件扩展名与实际格式不匹配。"
+                )
+            else:
+                user_msg = f"无法解析 Word 文件：{error_msg}"
+            
+            return ParseResult(success=False, error_message=user_msg)
         except Exception as e:
             logger.error(f"Word parsing error: {e}")
             return self._create_mock_result(file_path)
