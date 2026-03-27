@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # =================== 后端服务 ===================
+  
+  # QA 问答服务 (端口 8000)
+  backend-qa:
+    build:
+      context: ..
+      dockerfile: backend_QA/Dockerfile
+    container_name: smart-ragflow-qa
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - ADMIN_HOST=0.0.0.0
+      - ADMIN_PORT=8001
+    env_file:
+      - ../.env
+    restart: unless-stopped
+    networks:
+      - smart-ragflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Admin 管理后台服务 (端口 8001)
+  backend-admin:
+    build:
+      context: ..
+      dockerfile: backend_admin/Dockerfile
+    container_name: smart-ragflow-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DEBUG=false
+      - ADMIN_HOST=0.0.0.0
+      - ADMIN_PORT=8001
+    env_file:
+      - ../.env
+    restart: unless-stopped
+    networks:
+      - smart-ragflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Parser 文档解析 Worker
+  backend-parser:
+    build:
+      context: ..
+      dockerfile: backend_parser/Dockerfile
+    container_name: smart-ragflow-parser
+    environment:
+      - DEBUG=false
+    env_file:
+      - ../.env
+    restart: unless-stopped
+    networks:
+      - smart-ragflow
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # =================== 前端服务 ===================
+  
+  # QA 前端 (端口 3000)
+  frontend-qa:
+    build:
+      context: ./frontend_QA
+      dockerfile: Dockerfile
+    container_name: smart-ragflow-frontend-qa
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+    networks:
+      - smart-ragflow
+    depends_on:
+      - backend-qa
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Admin 前端 (端口 3001)
+  frontend-admin:
+    build:
+      context: ./frontend_admin
+      dockerfile: Dockerfile
+    container_name: smart-ragflow-frontend-admin
+    ports:
+      - "3001:8080"
+    restart: unless-stopped
+    networks:
+      - smart-ragflow
+    depends_on:
+      - backend-admin
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  smart-ragflow:
+    driver: bridge

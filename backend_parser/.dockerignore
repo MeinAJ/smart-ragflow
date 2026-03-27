@@ -1,0 +1,12 @@
+# 忽略本地开发文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.DS_Store
+*.log
+
+# 忽略测试和文档
+README.md
+test*.py
+*_test.py
