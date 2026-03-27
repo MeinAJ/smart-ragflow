@@ -15,15 +15,21 @@ import uvicorn
 
 from backend_QA.api import chat, download, history, auth
 
-# 加载 .env 文件
+# 加载 .env 文件（通过环境变量标记避免 Uvicorn reload 模式下重复打印）
 env_path = Path(__file__).parent.parent / ".env"
+_env_loaded_flag = "_RAGFLOW_ENV_LOADED"
+
 if env_path.exists():
     load_dotenv(dotenv_path=env_path, override=True)
-    print(f"✓ 已加载环境变量: {env_path}")
+    if not os.environ.get(_env_loaded_flag):
+        os.environ[_env_loaded_flag] = "1"
+        print(f"✓ 已加载环境变量: {env_path}")
 else:
     # 尝试从当前工作目录加载
     load_dotenv(override=True)
-    print("✓ 尝试从当前目录加载 .env")
+    if not os.environ.get(_env_loaded_flag):
+        os.environ[_env_loaded_flag] = "1"
+        print("✓ 尝试从当前目录加载 .env")
 
 # 配置日志
 logging.basicConfig(
